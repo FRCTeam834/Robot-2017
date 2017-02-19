@@ -62,7 +62,8 @@ public class Robot extends VisualRobot {
 	boolean LEDOn = false;
 	boolean toggleLED = false;
 	
-	boolean straightEnabled = false;
+	boolean fldCntrcEnabled = false;
+	boolean tglFldCntrc = false;
 	
 	boolean toggleClimb = false;
 	boolean climbing = false; 
@@ -235,22 +236,32 @@ public class Robot extends VisualRobot {
 
 	@Override
 	public void teleOpPeriodic() {
+
 		if(rightJoystick.getRawButton(1)) {
-			
 			setRightSide(1.0);
 			setLeftSide(1.0);
-			Timer.delay(.05);
 		}
-		else if (leftJoystick.getRawButton(2)){
+		else if (leftJoystick.getRawButton(1)){
 			this.goTowardsPeg(.2, 80);
 		}
 		else {	
 			setRightSide(-rightJoystick.getY() * Math.abs(rightJoystick.getY()));
 			setLeftSide(-leftJoystick.getY() * Math.abs(leftJoystick.getY()));
 		}
+		
+		if(rightJoystick.getRawButton(2)) {
+			if(!tglFldCntrc) {
+				fldCntrcEnabled = !this.fldCntrcEnabled;
+			}
+			tglFldCntrc = true;
+		}
+		else {
+			tglFldCntrc = false;
+		}
+		
+		
+		//Control structure for LED toggle
 		ringLED.set(LEDOn);
-		
-		
 		if(xbox.getRawButton(8)) {
 			if (!toggleLED){
 				LEDOn = !LEDOn;
@@ -261,18 +272,15 @@ public class Robot extends VisualRobot {
 			toggleLED = false;
 		}
 		
+		//Various outputs
 		SmartDashboard.putString("DB/String 0", Double.toString(lEncoder.getDistance()));
 //		SmartDashboard.putString("DB/String 1", Double.toString(rEncoder.getDistance()));
-
-		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getVoltage()/(5.0/1024.0)*5.0/10.0  *2.54));
-		
-		
+		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getVoltage()/(5.0/1024.0)*5.0/10.0  *2.54));		
 		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
-
 		SmartDashboard.putString("DB/String 4", Boolean.toString(climbing));
 
-		if(xbox.getRawButton(7)) {
-		
+		//Auto Climbing
+		if(xbox.getRawButton(7)) {		
 			if(!toggleClimb) {
 				climbing = !climbing;	
 				
@@ -296,6 +304,7 @@ public class Robot extends VisualRobot {
 			toggleClimb = false;
 		}
 		
+		//Manual Control of Lift
 		if(xbox.getRawButton(1)) {
 			
 			motors[6].set(-1.0);
@@ -307,7 +316,7 @@ public class Robot extends VisualRobot {
 			motors[6].set(0);
 		}
 
-		
+		//Control of balls
 		if(xbox.getRawButton(3)) {
 			motors[7].set(.3);
 		}
@@ -318,6 +327,7 @@ public class Robot extends VisualRobot {
 			motors[7].set(0);
 		}
 		
+		//Control Door
 		if(xbox.getRawButton(5)) {
 			door.set(0);
 		}
@@ -328,8 +338,6 @@ public class Robot extends VisualRobot {
 
 		
 	}
-	
-	
 	
 	double diff;
 	double lastDiff;
@@ -371,5 +379,29 @@ public class Robot extends VisualRobot {
 		Timer.delay(.05);
 		
 
+	}
+
+	public static class Toggler {
+		public boolean enabled;
+		private boolean toggle;
+		private Joystick joystick;
+		private int button;
+		
+		public Toggler(Joystick j, int b) {
+			joystick = j;
+			button = b;
+		}
+		
+		public void check() {
+			if(joystick.getRawButton(button)) {
+				if(!toggle) {
+					enabled = !enabled;
+				}
+				toggle = true;
+			}
+			else {
+				toggle = false;
+			}
+		} 
 	}
 }
