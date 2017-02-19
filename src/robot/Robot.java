@@ -13,6 +13,7 @@ import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.vision.VisionThread;
+import edu.wpi.cscore.AxisCamera;
 import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.AnalogInput;
@@ -63,6 +64,11 @@ public class Robot extends VisualRobot {
 	
 	boolean straightEnabled = false;
 	
+	boolean toggleClimb = false;
+	boolean climbing = false; 
+	final double CURRENT_THRESHOLD = 20.0;
+	final double TIME_TO_CLIMB = 2.25;
+	
 	private VisionThread visionThread;
 	private Object imgLock = new Object();;
 	private double centerX;
@@ -73,7 +79,9 @@ public class Robot extends VisualRobot {
 	public void robotInit() {
 		
 		UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
+
 	    camera.setResolution(IMG_WIDTH, IMG_HEIGHT);
+	    
 
 	    
 		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0 * 2); //*2 is temporary since one encdoer.
@@ -228,9 +236,6 @@ public class Robot extends VisualRobot {
 	@Override
 	public void teleOpPeriodic() {
 		if(rightJoystick.getRawButton(1)) {
-			if(!straightEnabled) {
-				robotGyro.reset();
-			}
 			
 			setRightSide(1.0);
 			setLeftSide(1.0);
@@ -244,6 +249,7 @@ public class Robot extends VisualRobot {
 			setLeftSide(-leftJoystick.getY() * Math.abs(leftJoystick.getY()));
 		}
 		ringLED.set(LEDOn);
+		
 		
 		if(xbox.getRawButton(8)) {
 			if (!toggleLED){
@@ -260,17 +266,47 @@ public class Robot extends VisualRobot {
 
 		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getVoltage()/(5.0/1024.0)*5.0/10.0  *2.54));
 		
+		
+		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
 
+		SmartDashboard.putString("DB/String 4", Boolean.toString(climbing));
 
+		if(xbox.getRawButton(7)) {
+		
+			if(!toggleClimb) {
+				climbing = !climbing;	
+				
+				Thread t = new Thread(() -> {
+					if(climbing ){
+						motors[6].set(-1.0);
+						Timer.delay(.5);
+						while(climbing && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
+						System.out.println("Current Threshold Reached");
+						double startTime = Timer.getFPGATimestamp();
+						while(climbing && motors[6].getOutputCurrent() > this.CURRENT_THRESHOLD && Timer.getFPGATimestamp()-startTime < this.TIME_TO_CLIMB) {}
+						motors[6].set(0.0);
+						climbing = false;
+					}
+				});
+				t.start();
+			}
+			toggleClimb = true;
+		}
+		else {
+			toggleClimb = false;
+		}
+		
 		if(xbox.getRawButton(1)) {
+			
 			motors[6].set(-1.0);
 		}
 		else if (xbox.getRawButton(2)) {
 			motors[6].set(.3);
 		}
-		else {
+		else if(!climbing){
 			motors[6].set(0);
 		}
+
 		
 		if(xbox.getRawButton(3)) {
 			motors[7].set(.3);
@@ -278,7 +314,7 @@ public class Robot extends VisualRobot {
 		else if(xbox.getRawButton(4)) {
 			motors[7].set(-.3);
 		}
-		else {
+		else  {
 			motors[7].set(0);
 		}
 		
@@ -292,6 +328,8 @@ public class Robot extends VisualRobot {
 
 		
 	}
+	
+	
 	
 	double diff;
 	double lastDiff;
