@@ -16,6 +16,7 @@ import edu.wpi.first.wpilibj.vision.VisionThread;
 import edu.wpi.cscore.AxisCamera;
 import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.ADXRS450_Gyro;
+import edu.wpi.first.wpilibj.AnalogGyro;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.CameraServer;
 import visualrobot.ChooseAuton;
@@ -52,18 +53,21 @@ public class Robot extends VisualRobot {
 	AnalogInput ultrasonic = new AnalogInput(0);
 	
 	ADXRS450_Gyro robotGyro = new ADXRS450_Gyro();
-	
+	AnalogGyro gyro = new AnalogGyro(1);
+
 	Solenoid ringLED = new Solenoid(1,0);
 	
 	Joystick leftJoystick = new Joystick(0);
 	Joystick rightJoystick = new Joystick(1);
 	Joystick xbox = new Joystick(2);
 
-	boolean LEDOn = false;
-	boolean toggleLED = false;
+	Toggler LED = new Toggler(xbox, 8); //Start button
+	Toggler fieldCentric = new Toggler(rightJoystick, 2);
+	int fieldCentricStage = 0;	
+	double turnAngle = 0;
+	double dAngle = 0;
 	
-	boolean fldCntrcEnabled = false;
-	boolean tglFldCntrc = false;
+	Toggler autoClimbing = new Toggler(xbox, 7);
 	
 	boolean toggleClimb = false;
 	boolean climbing = false; 
@@ -83,11 +87,8 @@ public class Robot extends VisualRobot {
 
 	    camera.setResolution(IMG_WIDTH, IMG_HEIGHT);
 	    
-
-	    
 		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0 * 2); //*2 is temporary since one encdoer.
 //		rEncoder.setDistancePerPulse(-6.0*Math.PI/4.0);
-
 		
 		super.sensors.put("leftEncoder", lEncoder);
 		super.sensors.put("rightEncoder", rEncoder);
@@ -247,30 +248,48 @@ public class Robot extends VisualRobot {
 		else {	
 			setRightSide(-rightJoystick.getY() * Math.abs(rightJoystick.getY()));
 			setLeftSide(-leftJoystick.getY() * Math.abs(leftJoystick.getY()));
-		}
-		
-		if(rightJoystick.getRawButton(2)) {
-			if(!tglFldCntrc) {
-				fldCntrcEnabled = !this.fldCntrcEnabled;
+			
+			if(fieldCentric.enabled) {
+				if(fieldCentricStage == 0) {
+					if (Math.signum(dAngle) * gyro.getAngle() <=  Math.signum(dAngle) *turnAngle) {
+						fieldCentricStage = 1;
+						setRightSide(Math.signum(dAngle) * .3);
+						setLeftSide(-Math.signum(dAngle) * .3); 
+					}
+				}
+				else if(fieldCentricStage == 1) {
+					double lspeed = -leftJoystick.getY() * Math.abs(leftJoystick.getY());
+					double rspeed = -rightJoystick.getY() * Math.abs(rightJoystick.getY());
+					lspeed = (lspeed + rspeed)/2;
+					rspeed = (lspeed + rspeed)/2;
+					
+					if(targetAngle % 360 >= 90) {
+						lspeed *= -1;
+						rspeed *= -1;
+					}
+					if(gyro.getAngle() - targetAngle < 0){
+						rspeed -= Math.abs(gyro.getAngle() * rspeed/25.0);
+					}
+					else if(gyro.getAngle() > 0) {
+						lspeed -= Math.abs(gyro.getAngle() * lspeed/25.0);
+					}
+					this.setLeftSide(lspeed);
+					this.setRightSide(rspeed);
+
+				}
 			}
-			tglFldCntrc = true;
-		}
-		else {
-			tglFldCntrc = false;
 		}
 		
-		
-		//Control structure for LED toggle
-		ringLED.set(LEDOn);
-		if(xbox.getRawButton(8)) {
-			if (!toggleLED){
-				LEDOn = !LEDOn;
-			}
-			toggleLED = true;
+		fieldCentric.check();		
+		if(fieldCentric.getButton() && !fieldCentric.toggle ) {
+			 dAngle = (gyro.getAngle() % 180);
+			 dAngle =  Math.abs(dAngle) > 90 ? -(180 - dAngle) : dAngle;
+			 turnAngle = gyro.getAngle() - dAngle;
+
 		}
-		else {
-			toggleLED = false;
-		}
+		//Control structure for LED toggle (start button)
+		ringLED.set(LED.enabled);
+		LED.check();
 		
 		//Various outputs
 		SmartDashboard.putString("DB/String 0", Double.toString(lEncoder.getDistance()));
@@ -280,30 +299,22 @@ public class Robot extends VisualRobot {
 		SmartDashboard.putString("DB/String 4", Boolean.toString(climbing));
 
 		//Auto Climbing
-		if(xbox.getRawButton(7)) {		
-			if(!toggleClimb) {
-				climbing = !climbing;	
-				
-				Thread t = new Thread(() -> {
-					if(climbing ){
-						motors[6].set(-1.0);
-						Timer.delay(.5);
-						while(climbing && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
-						System.out.println("Current Threshold Reached");
-						double startTime = Timer.getFPGATimestamp();
-						while(climbing && motors[6].getOutputCurrent() > this.CURRENT_THRESHOLD && Timer.getFPGATimestamp()-startTime < this.TIME_TO_CLIMB) {}
-						motors[6].set(0.0);
-						climbing = false;
-					}
-				});
-				t.start();
+		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
+			if(autoClimbing.enabled ){
+				motors[6].set(-1.0);
+				Timer.delay(.5);
+				while(autoClimbing.enabled && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
+				System.out.println("Current Threshold Reached");
+				double startTime = Timer.getFPGATimestamp();
+				while(autoClimbing.enabled && motors[6].getOutputCurrent() > this.CURRENT_THRESHOLD && Timer.getFPGATimestamp()-startTime < this.TIME_TO_CLIMB) {}
+				motors[6].set(0.0);
+				autoClimbing.enabled = false;
 			}
-			toggleClimb = true;
+
 		}
-		else {
-			toggleClimb = false;
-		}
-		
+		autoClimbing.check();
+
+				
 		//Manual Control of Lift
 		if(xbox.getRawButton(1)) {
 			
@@ -312,7 +323,7 @@ public class Robot extends VisualRobot {
 		else if (xbox.getRawButton(2)) {
 			motors[6].set(.3);
 		}
-		else if(!climbing){
+		else if(!autoClimbing.enabled){
 			motors[6].set(0);
 		}
 
@@ -383,7 +394,7 @@ public class Robot extends VisualRobot {
 
 	public static class Toggler {
 		public boolean enabled;
-		private boolean toggle;
+		public boolean toggle;
 		private Joystick joystick;
 		private int button;
 		
@@ -393,7 +404,7 @@ public class Robot extends VisualRobot {
 		}
 		
 		public void check() {
-			if(joystick.getRawButton(button)) {
+			if(getButton()) {
 				if(!toggle) {
 					enabled = !enabled;
 				}
@@ -403,5 +414,9 @@ public class Robot extends VisualRobot {
 				toggle = false;
 			}
 		} 
+		
+		public boolean getButton() {
+			return joystick.getRawButton(button);
+		}
 	}
 }
