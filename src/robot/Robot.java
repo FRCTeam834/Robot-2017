@@ -50,7 +50,21 @@ public class Robot extends VisualRobot {
 		}
 	};
 	
-	AnalogInput ultrasonic = new AnalogInput(0);
+	private static class AUltrasonic extends AnalogInput {
+		
+		private final double VOLTAGE = 5.0;
+	
+		public AUltrasonic(int channel) {
+			super(channel);		
+		}
+
+		public double getDistance() {
+			return this.getVoltage()/(VOLTAGE/1024.0)/5.0*100*2.54;
+		}
+	}
+	AUltrasonic ultrasonic = new AUltrasonic(0);
+
+
 	
 	ADXRS450_Gyro robotGyro = new ADXRS450_Gyro();
 	AnalogGyro gyro = new AnalogGyro(1);
@@ -105,7 +119,7 @@ public class Robot extends VisualRobot {
 		motors[6] = new CANTalon(7);
 		motors[7] = new CANTalon(4);
 
-		 
+		
 	    visionThread = new VisionThread(camera, new GripPipeline(), pipeline -> {
 	        if (!pipeline.filterContoursOutput().isEmpty()) {
 
@@ -182,32 +196,31 @@ public class Robot extends VisualRobot {
 
 		ringLED.set(true);
 
-		while (this.isAutonomous() && !this.isDisabled()) {
-			this.goTowardsPeg(.3, 24);
+		ChooseAuton c = new ChooseAuton(this);
+		c.chooseAuton("fieldLap");
+
+		ArrayList<Command> t = c.cmdSet.getMain();
+		
+		MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
+		
+		c.run();
+		
+		lEncoder.reset();	
+		
+		ringLED.set(true);
+
+		System.out.println(mvc.distance);
+		while (Math.abs(lEncoder.getDistance()) < mvc.distance-20 && this.isAutonomous()) {
+			goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
 		}
-//		ChooseAuton c = new ChooseAuton(this);
-//		c.chooseAuton("fieldLap");
-//
-//		ArrayList<Command> t = c.cmdSet.getMain();
-//		
-//		MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
-//		
-////		c.run();
-//		lEncoder.reset();	
-//		
-//		ringLED.set(true);
-//
-//		while (Math.abs(lEncoder.getDistance()) < mvc.distance-20 && this.isAutonomous()) {
-//			goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
-//		}
-//		this.setRightSide(0.0);
-//		this.setLeftSide(0.0);
-//		
-//		ringLED.set(false);
-//		
-//		MoveStraightCommand toPeg = new MoveStraightCommand(20, .3);
-//		toPeg.setRobot(this);
-//		toPeg.execute();
+		this.setRightSide(0.0);
+		this.setLeftSide(0.0);
+		
+		ringLED.set(false);
+		
+		MoveStraightCommand toPeg = new MoveStraightCommand(20, .3);
+		toPeg.setRobot(this);
+		toPeg.execute();
 		
 
 
@@ -243,7 +256,7 @@ public class Robot extends VisualRobot {
 			setLeftSide(1.0);
 		}
 		else if (leftJoystick.getRawButton(1)){
-			this.goTowardsPeg(.2, 80);
+			this.goTowardsPeg(.2, ultrasonic.getDistance());
 		}
 		else {	
 			setRightSide(-rightJoystick.getY() * Math.abs(rightJoystick.getY()));
@@ -294,7 +307,7 @@ public class Robot extends VisualRobot {
 		//Various outputs
 		SmartDashboard.putString("DB/String 0", Double.toString(lEncoder.getDistance()));
 //		SmartDashboard.putString("DB/String 1", Double.toString(rEncoder.getDistance()));
-		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getVoltage()/(5.0/1024.0)*5.0/10.0  *2.54));		
+		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getDistance()));		
 		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
 		SmartDashboard.putString("DB/String 4", Boolean.toString(climbing));
 
