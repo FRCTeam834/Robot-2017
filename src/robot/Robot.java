@@ -19,6 +19,7 @@ import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.AnalogGyro;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.CameraServer;
+import edu.wpi.first.wpilibj.DigitalInput;
 import visualrobot.ChooseAuton;
 import visualrobot.Command;
 import visualrobot.MoveStraightCommand;
@@ -42,6 +43,8 @@ public class Robot extends VisualRobot {
 	
 	Servo door = new Servo(0);
 	
+	DigitalInput gearSensor = new DigitalInput(4);
+	
 	Encoder lEncoder = new Encoder(0, 1);
 	Encoder rEncoder = new Encoder(2, 3) {
 		public double getDistance() {
@@ -59,7 +62,7 @@ public class Robot extends VisualRobot {
 		}
 
 		public double getDistance() {
-			return this.getVoltage()/(VOLTAGE/1024.0)/5.0*100*2.54;
+			return this.getVoltage()/(VOLTAGE/1024.0)*5.0*100/2.54/21000*24;
 		}
 	}
 	AUltrasonic ultrasonic = new AUltrasonic(0);
@@ -83,15 +86,12 @@ public class Robot extends VisualRobot {
 	
 	Toggler autoClimbing = new Toggler(xbox, 7);
 	
-	boolean toggleClimb = false;
-	boolean climbing = false; 
 	final double CURRENT_THRESHOLD = 20.0;
 	final double TIME_TO_CLIMB = 2.25;
 	
 	private VisionThread visionThread;
 	private Object imgLock = new Object();;
 	private double centerX;
-	private double centerY;
 	private double size;
 
 	
@@ -107,6 +107,10 @@ public class Robot extends VisualRobot {
 		super.sensors.put("leftEncoder", lEncoder);
 		super.sensors.put("rightEncoder", rEncoder);
 		super.sensors.put("gyro", robotGyro);
+		
+		robotGyro.calibrate();
+		gyro.calibrate();
+		gyro.reset();
 		
 		motors[0] = new CANTalon(5);
 		motors[1] = new CANTalon(9);
@@ -124,63 +128,41 @@ public class Robot extends VisualRobot {
 	        if (!pipeline.filterContoursOutput().isEmpty()) {
 
 	        	ArrayList<MatOfPoint> contours = pipeline.filterContoursOutput();
-	            int size = contours.size();
+	        	int[] centers = new int[contours.size()];
+	        	
+	        	for(int i = 0; i < contours.size(); i++) {
+	        		Rect r = Imgproc.boundingRect(contours.get(i));
+	        		centers[i] = r.x + r.width/2 ;      		
+	        	}
+	        
+	        	for (int i = 0; i < contours.size(); i++) {
+        			int minj = 0;
+        			int min = -1;
 
-            	int avgX = 0;
-            	int avgY = 0;
-            	if(size == 1) {
-            		Rect r = Imgproc.boundingRect(contours.get(0));
-            		avgX += r.x + r.width/2;
-            		avgY += r.y + r.height/2;
-            	}
-            	else if(size == 2) {
-	            	for(MatOfPoint c : contours) {
-	            		Rect r = Imgproc.boundingRect(c);
-	            		avgX += r.x + r.width/2;
-	            		avgY += r.y + r.height/2;
-	            	}
-	            	avgX /= 2;
-	            	avgY /= 2;
-	            }
-	            else if (size == 3) {
-	            	
-	            	double xs[] = new double[3];
-	            	double ys[] = new double[3];
-	            	for(int i = 0; i < 3; i++) {
-	            		MatOfPoint c =  contours.get(i);
-	            		Rect r = Imgproc.boundingRect(c);
-	            		xs[i] = r.x + r.width/2;
-	            		ys[i] = r.y + r.height/2;
-	            	}
-	            	double maxDiff = 0;
-	            	double weightX = 0;
-	            	double weightY = 0;
-	            	
-	            	for (int i = 0; i < 3; i++) {
-
-	            		double otherX1 = xs[(i+1)%3];
-	            		double otherX2 = xs[(i+2)%3];
-	            		double distToOthers = Math.abs(xs[i] - otherX1) + Math.abs(xs[i] - otherX2);
-	            		if(distToOthers > maxDiff) {
-	            			maxDiff = distToOthers;
-	            			weightX = xs[i];
-	            			weightY = ys[i];
-	            		}
-	            		avgX += xs[i];
-	            		avgY += ys[i];
-	            	}
-	            	
-	            	avgX -= weightX;
-	            	avgY -= weightY;
-
-	            	avgX /= 2;
-	            	avgY /= 2;
-	            }
-	            
+	        		for (int j = i+1; j < contours.size(); j++) {
+	        			if(minj == -1 || Math.abs(centers[j] - 160) < min) {
+	        				minj = j;
+		        			min = Math.abs(centers[j] - 160);
+	        			}
+	        		}
+	        		
+	        		MatOfPoint temp = contours.get(minj);
+	        		contours.set(minj, contours.get(i));
+	        		centers[minj] = centers[i];
+	        		contours.set(i, temp);
+	        		centers[i] = min;
+	        	}
+	        	
+	        	int result = 0;
+	        	if(centers.length >=2) {
+	        		result = (centers[0] + centers[1]) /2;
+	        	}
+	        	else{
+	        		result = 0;
+	        	}
 	            synchronized (imgLock) {
-	                centerX = avgX;
-	                centerY = avgY;
-	                this.size = size;
+	                centerX = result;
+	                this.size = contours.size();
 
 	            }
 	        }
@@ -208,9 +190,8 @@ public class Robot extends VisualRobot {
 		lEncoder.reset();	
 		
 		ringLED.set(true);
-
-		System.out.println(mvc.distance);
-		while (Math.abs(lEncoder.getDistance()) < mvc.distance-20 && this.isAutonomous()) {
+		robotGyro.reset();
+		while (Math.abs(lEncoder.getDistance()) < mvc.distance && this.isAutonomous()) {
 			goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
 		}
 		this.setRightSide(0.0);
@@ -252,29 +233,24 @@ public class Robot extends VisualRobot {
 	public void teleOpPeriodic() {
 
 		if(rightJoystick.getRawButton(1)) {
-			setRightSide(1.0);
-			setLeftSide(1.0);
+			setRightSide(1.0 * Math.signum(-rightJoystick.getY()));
+			setLeftSide(1.0 * Math.signum(-rightJoystick.getY()));
 		}
 		else if (leftJoystick.getRawButton(1)){
 			this.goTowardsPeg(.2, ultrasonic.getDistance());
 		}
-		else {	
-			setRightSide(-rightJoystick.getY() * Math.abs(rightJoystick.getY()));
-			setLeftSide(-leftJoystick.getY() * Math.abs(leftJoystick.getY()));
-			
+		else {				
 			if(fieldCentric.enabled) {
 				if(fieldCentricStage == 0) {
+					
 					if (Math.signum(dAngle) * gyro.getAngle() <=  Math.signum(dAngle) *turnAngle) {
 						fieldCentricStage = 1;
-						setRightSide(Math.signum(dAngle) * .3);
-						setLeftSide(-Math.signum(dAngle) * .3); 
+
 					}
 				}
 				else if(fieldCentricStage == 1) {
-					double lspeed = -leftJoystick.getY() * Math.abs(leftJoystick.getY());
-					double rspeed = -rightJoystick.getY() * Math.abs(rightJoystick.getY());
-					lspeed = (lspeed + rspeed)/2;
-					rspeed = (lspeed + rspeed)/2;
+					double lspeed = -rightJoystick.getY(); //* Math.abs(leftJoystick.getY());
+					double rspeed = -rightJoystick.getY();
 					
 					if(targetAngle % 360 >= 90) {
 						lspeed *= -1;
@@ -291,6 +267,12 @@ public class Robot extends VisualRobot {
 
 				}
 			}
+			else if(!fieldCentric.enabled){
+				setRightSide(-rightJoystick.getY());
+				setLeftSide(-leftJoystick.getY()); 
+
+			}
+
 		}
 		
 		fieldCentric.check();		
@@ -309,7 +291,8 @@ public class Robot extends VisualRobot {
 //		SmartDashboard.putString("DB/String 1", Double.toString(rEncoder.getDistance()));
 		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getDistance()));		
 		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
-		SmartDashboard.putString("DB/String 4", Boolean.toString(climbing));
+		SmartDashboard.putString("DB/String 4", Boolean.toString(fieldCentric.enabled) +" " + this.fieldCentricStage);
+		SmartDashboard.putString("DB/String 5", Boolean.toString(gearSensor.get()));
 
 		//Auto Climbing
 		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
@@ -366,12 +349,12 @@ public class Robot extends VisualRobot {
 	double diff;
 	double lastDiff;
 	double targetAngle = 0;
+
 	public void goTowardsPeg(double speed, double distance) {
 					
 		double centerX, centerY, size;
 		synchronized (imgLock) {
 			centerX = this.centerX;
-			centerY = this.centerY;
 			size = this.size;
 		}
 
@@ -381,16 +364,21 @@ public class Robot extends VisualRobot {
 		
 		if(lastDiff != diff) {
 			targetAngle = Math.atan(diff/distance) * 180.0 / Math.PI;
-			System.out.println("changing to " + targetAngle);
+			gyro.reset();
+			if(distance < 15) 
+				targetAngle = 0;
+			if(centerX == 0)
+				targetAngle = 0;
+			System.out.println("changing to " + (robotGyro.getAngle()- targetAngle) + " (" + centerX + ")");
 		}
 		
 		double lspeed = speed, rspeed = speed;
 	
 		if(robotGyro.getAngle() < targetAngle){
-			rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/50.0 ;
+			rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/25.0 ;
 		}
 		else if(robotGyro.getAngle() > targetAngle) {
-			lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/50.0;
+			lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/25.0;
 		}
 	
 		rspeed = rspeed < 0 ? 0 : rspeed;
