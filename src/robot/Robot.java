@@ -1,6 +1,13 @@
-package robot;
+ package robot;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Scanner;
 
 import org.opencv.core.Rect;
 import org.opencv.imgproc.Imgproc;
@@ -37,7 +44,7 @@ public class Robot extends VisualRobot {
 	 * 0-2 Right Drive
 	 * 3-5 Left Drive
 	 * 6 Lift
-	 * 7 Fuel
+	 * 7 Fuel: Encoder Value 0- 70000
 	 */
 	CANTalon[] motors = new CANTalon[8];
 	
@@ -45,34 +52,48 @@ public class Robot extends VisualRobot {
 	
 	DigitalInput gearSensor = new DigitalInput(4);
 	
-	Encoder lEncoder = new Encoder(0, 1);
-	Encoder rEncoder = new Encoder(2, 3) {
+	Encoder lEncoder = new Encoder(0, 1) {
 		public double getDistance() {
 			return 0;
 			
+		}		
+	};
+			
+	Encoder rEncoder = new Encoder(2, 3);
+	
+	Encoder fuelEncoder = new Encoder(8, 9) {
+		public double getDistance() {
+			return (double)motors[7].getEncPosition();
+		}
+		public void reset() {
+			motors[7].setEncPosition(0);
 		}
 	};
-	
-	private static class AUltrasonic extends AnalogInput {
-		
-		private final double VOLTAGE = 5.0;
-	
-		public AUltrasonic(int channel) {
-			super(channel);		
-		}
 
-		public double getDistance() {
-			return this.getVoltage()/(VOLTAGE/1024.0)*5.0*100/2.54/21000*24;
-		}
-	}
-	AUltrasonic ultrasonic = new AUltrasonic(0);
+//	
+//	private static class AUltrasonic extends AnalogInput {
+//		
+//	
+//		public AUltrasonic(int channel) {
+//			super(channel);		
+//		}
+//
+//		public double getDistance() {
+//			return this.getVoltage()/5120.0;
+//		}
+//	}
+//	AUltrasonic ultrasonic = new AUltrasonic(0);
 
 
 	
 	ADXRS450_Gyro robotGyro = new ADXRS450_Gyro();
 	AnalogGyro gyro = new AnalogGyro(1);
 
-	Solenoid ringLED = new Solenoid(1,0);
+	Solenoid ringLED = new Solenoid(1,4);
+	Solenoid frontLED = new Solenoid(1,1);
+	Solenoid rightLED = new Solenoid(1,2);
+	Solenoid leftLED = new Solenoid(1,5);
+	Solenoid backLED = new Solenoid(1,0);
 	
 	Joystick leftJoystick = new Joystick(0);
 	Joystick rightJoystick = new Joystick(1);
@@ -84,7 +105,12 @@ public class Robot extends VisualRobot {
 	double turnAngle = 0;
 	double dAngle = 0;
 	
+	int bShakeCount = 0;
+	int LEDFlashCount = 0;
+	
 	Toggler autoClimbing = new Toggler(xbox, 7);
+	
+	Toggler manual = new Toggler(xbox, 5);
 	
 	final double CURRENT_THRESHOLD = 20.0;
 	final double TIME_TO_CLIMB = 2.25;
@@ -94,6 +120,7 @@ public class Robot extends VisualRobot {
 	private double centerX;
 	private double size;
 
+	ArrayList<ArrayList<Double>> data = new ArrayList<ArrayList<Double>>();
 	
 	public void robotInit() {
 		
@@ -101,12 +128,14 @@ public class Robot extends VisualRobot {
 
 	    camera.setResolution(IMG_WIDTH, IMG_HEIGHT);
 	    
-		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0 * 2); //*2 is temporary since one encdoer.
-//		rEncoder.setDistancePerPulse(-6.0*Math.PI/4.0);
+		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0*2.0); //*2 is temporary since one encdoer.
+//		rEncoder.setDistancePerPulse(-6.0*Math.PI/256.0);
 		
 		super.sensors.put("leftEncoder", lEncoder);
 		super.sensors.put("rightEncoder", rEncoder);
 		super.sensors.put("gyro", robotGyro);
+		super.sensors.put("fuelEncoder", fuelEncoder);
+		
 		
 		robotGyro.calibrate();
 		gyro.calibrate();
@@ -123,6 +152,9 @@ public class Robot extends VisualRobot {
 		motors[6] = new CANTalon(7);
 		motors[7] = new CANTalon(4);
 
+		super.motors.put("fuel", motors[7]);
+
+//		manual.enabled =true;
 		
 	    visionThread = new VisionThread(camera, new GripPipeline(), pipeline -> {
 	        if (!pipeline.filterContoursOutput().isEmpty()) {
@@ -176,33 +208,55 @@ public class Robot extends VisualRobot {
 	
 	public void autonomous() {
 
+		String program = SmartDashboard.getString("DB/String 0", "default");
+		boolean vision = SmartDashboard.getString("DB/String 1", "").equals( "enablevision");
+		boolean recording = SmartDashboard.getString("DB/String 1", "").equals( "userecording");
+		
+		if(recording) {
+			useRecording();
+			return;
+		}
+		
 		ringLED.set(true);
 
 		ChooseAuton c = new ChooseAuton(this);
-		c.chooseAuton("fieldLap");
-
+		c.chooseAuton(program);
 		ArrayList<Command> t = c.cmdSet.getMain();
+
 		
-		MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
-		
-		c.run();
-		
-		lEncoder.reset();	
-		
-		ringLED.set(true);
-		robotGyro.reset();
-		while (Math.abs(lEncoder.getDistance()) < mvc.distance && this.isAutonomous()) {
-			goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
+		door.set(1);
+		for(Command com : t) {
+			if(com.getClass().equals(visualrobot.MoveStraightCommand.class)) {
+				((MoveStraightCommand) com).distance -= 15;
+			}
 		}
-		this.setRightSide(0.0);
-		this.setLeftSide(0.0);
-		
-		ringLED.set(false);
-		
-		MoveStraightCommand toPeg = new MoveStraightCommand(20, .3);
-		toPeg.setRobot(this);
-		toPeg.execute();
-		
+
+		if(vision) {
+			
+			MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
+			mvc.distance+=15;
+			c.run();
+			
+			lEncoder.reset();	
+			
+			
+			ringLED.set(true);
+			robotGyro.reset();
+			while (Math.abs(lEncoder.getDistance()) < mvc.distance && this.isAutonomous()) {
+				goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
+			}
+			this.setRightSide(0.0);
+			this.setLeftSide(0.0);
+			
+			ringLED.set(false);
+			
+			MoveStraightCommand toPeg = new MoveStraightCommand(20, .3);
+			toPeg.setRobot(this);
+			toPeg.execute();
+		}
+		else {
+			c.run();
+		}
 
 
 	}
@@ -226,18 +280,87 @@ public class Robot extends VisualRobot {
 	}
 
 	public void teleOpInit() {
+		if(SmartDashboard.getString("DB/String 1", "").equals("Record")) {
+			data.add(new ArrayList<Double>());
+			data.add(new ArrayList<Double>());
+			data.add(new ArrayList<Double>());		
+			
+			while(this.isEnabled() && this.isOperatorControl()) {
+				
+				long startTime = System.currentTimeMillis();
+				double right = -rightJoystick.getY();
+				double left = -leftJoystick.getY();
+				setRightSide(right);
+				setLeftSide(left); 
+				data.get(0).add(left);
+				data.get(1).add(right);
+				Timer.delay(.05);
+				data.get(2).add((double) (System.currentTimeMillis()-startTime));
+				
 
+			}
+		}
 	}
 
+	public void disabled() {
+		if(!data.isEmpty())
+			saveRecording();
+	}
+	
+	public void saveRecording() {
+		PrintWriter pw;
+		try {
+			pw = new PrintWriter(new BufferedWriter(new FileWriter("/home/lvuser/recorded.txt")));
+			for(int i = 0; i < data.get(0).size(); i++) {
+				pw.println(data.get(0).get(i) + " " + data.get(1).get(i) + " " + data.get(2).get(i));
+			}
+			pw.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		data.clear();
+	}
+	public void useRecording() {
+		try {
+			Scanner in = new Scanner(new File("/home/lvuser/recorded.txt"));
+			
+			ArrayList<Double> lSpeeds = new ArrayList<Double>();
+			ArrayList<Double> rSpeeds = new ArrayList<Double>();
+			ArrayList<Double> times = new ArrayList<Double>();
+
+			while(in.hasNextLine()) {
+				String[] input =  in.nextLine().split(" ");
+				lSpeeds.add(Double.parseDouble(input[0]));
+				rSpeeds.add(Double.parseDouble(input[1]));
+				times.add(Double.parseDouble(input[2]));
+			}
+			
+			int i = 0;
+			while( i < lSpeeds.size() && this.isEnabled()) {
+				this.setLeftSide(lSpeeds.get(i));
+				this.setRightSide(rSpeeds.get(i));
+				Timer.delay(times.get(i)/1000.0);
+			}
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+	}
+	
 	@Override
 	public void teleOpPeriodic() {
 
+		manual.check();
+		
+		if(xbox.getRawButton(6)) {
+			fuelEncoder.reset();
+		}
+		
 		if(rightJoystick.getRawButton(1)) {
 			setRightSide(1.0 * Math.signum(-rightJoystick.getY()));
 			setLeftSide(1.0 * Math.signum(-rightJoystick.getY()));
-		}
-		else if (leftJoystick.getRawButton(1)){
-			this.goTowardsPeg(.2, ultrasonic.getDistance());
 		}
 		else {				
 			if(fieldCentric.enabled) {
@@ -252,15 +375,19 @@ public class Robot extends VisualRobot {
 					double lspeed = -rightJoystick.getY(); //* Math.abs(leftJoystick.getY());
 					double rspeed = -rightJoystick.getY();
 					
-					if(targetAngle % 360 >= 90) {
+					double turnAngle = targetAngle % 360;
+					if(turnAngle < 0) 
+						turnAngle+=360;
+						
+					if(turnAngle >= 90) {
 						lspeed *= -1;
 						rspeed *= -1;
 					}
 					if(gyro.getAngle() - targetAngle < 0){
-						rspeed -= Math.abs(gyro.getAngle() * rspeed/25.0);
+						rspeed -= Math.abs((gyro.getAngle()- targetAngle) * rspeed/25.0);
 					}
-					else if(gyro.getAngle() > 0) {
-						lspeed -= Math.abs(gyro.getAngle() * lspeed/25.0);
+					else if(gyro.getAngle()-targetAngle > 0) {
+						lspeed -= Math.abs((gyro.getAngle()- targetAngle) * lspeed/25.0);
 					}
 					this.setLeftSide(lspeed);
 					this.setRightSide(rspeed);
@@ -275,29 +402,41 @@ public class Robot extends VisualRobot {
 
 		}
 		
-		fieldCentric.check();		
 		if(fieldCentric.getButton() && !fieldCentric.toggle ) {
 			 dAngle = (gyro.getAngle() % 180);
+			 if(dAngle < 0)
+				 dAngle += 180;
+			 System.out.println(dAngle);
 			 dAngle =  Math.abs(dAngle) > 90 ? -(180 - dAngle) : dAngle;
 			 turnAngle = gyro.getAngle() - dAngle;
-
 		}
+		fieldCentric.check();		
+
 		//Control structure for LED toggle (start button)
 		ringLED.set(LED.enabled);
 		LED.check();
 		
+		if(gearSensor.get()) {
+			this.setLEDs(false);
+		}
+		else {
+			this.setLEDs(true);
+		}
+		
 		//Various outputs
-		SmartDashboard.putString("DB/String 0", Double.toString(lEncoder.getDistance()));
-//		SmartDashboard.putString("DB/String 1", Double.toString(rEncoder.getDistance()));
-		SmartDashboard.putString("DB/String 2", Double.toString(ultrasonic.getDistance()));		
+		SmartDashboard.putString("DB/String 2", manual.enabled ? "manual enabled" : "manual disabled"); 
 		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
-		SmartDashboard.putString("DB/String 4", Boolean.toString(fieldCentric.enabled) +" " + this.fieldCentricStage);
-		SmartDashboard.putString("DB/String 5", Boolean.toString(gearSensor.get()));
+		SmartDashboard.putString("DB/String 4", "Field Centric: " + Boolean.toString(fieldCentric.enabled) + " " + turnAngle);
+		SmartDashboard.putString("DB/String 5", !gearSensor.get()? "IN IN IN IN" : "no gear");
+		SmartDashboard.putString("DB/String 6", Double.toString(lEncoder.getDistance()));
+		SmartDashboard.putString("DB/String 7", Double.toString(rEncoder.getDistance()));
+		SmartDashboard.putString("DB/String 8", Double.toString(fuelEncoder.getDistance()));
+		SmartDashboard.putString("DB/String 8", Double.toString(gyro.getAngle()));
 
 		//Auto Climbing
 		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
 			if(autoClimbing.enabled ){
-				motors[6].set(-1.0);
+				motors[6].set(1.0);
 				Timer.delay(.5);
 				while(autoClimbing.enabled && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
 				System.out.println("Current Threshold Reached");
@@ -314,36 +453,50 @@ public class Robot extends VisualRobot {
 		//Manual Control of Lift
 		if(xbox.getRawButton(1)) {
 			
-			motors[6].set(-1.0);
+			motors[6].set(1.0);
 		}
-		else if (xbox.getRawButton(2)) {
-			motors[6].set(.3);
+		else if (xbox.getRawButton(2) && manual.enabled) {
+			motors[6].set(-.3);
 		}
 		else if(!autoClimbing.enabled){
 			motors[6].set(0);
 		}
 
-		//Control of balls
-		if(xbox.getRawButton(3)) {
-			motors[7].set(.3);
+		//Control of balls and door
+		if(xbox.getRawButton(4)){
+			if(manual.enabled || fuelEncoder.getDistance() < 70000) {
+				motors[7].set(.8);
+			}
+			else {
+				bShakeCount = bShakeCount > 100 ? 0 : bShakeCount + 1;
+				if(bShakeCount > 50 && fuelEncoder.getDistance() < 70000) {
+					motors[7].set(.4);
+				}
+				else {
+					motors[7].set(-.4);
+				}
+				
+			}
+			door.set(1);
 		}
-		else if(xbox.getRawButton(4)) {
+		else if(xbox.getRawButton(3)){// && (manual.enabled || fuelEncoder.getDistance() > 0)) {
 			motors[7].set(-.3);
+			door.set(0);
+
 		}
 		else  {
 			motors[7].set(0);
 		}
-		
-		//Control Door
-		if(xbox.getRawButton(5)) {
-			door.set(0);
-		}
-		else if(xbox.getRawButton(6)) {
-			door.set(1);
-		}
-		
 
 		
+		
+//		//Control Door
+//		if(motors[7].getEncPosition() > 55000) {
+//		}
+//		else {
+//		}
+		Timer.delay(.05);
+
 	}
 	
 	double diff;
@@ -373,12 +526,14 @@ public class Robot extends VisualRobot {
 		}
 		
 		double lspeed = speed, rspeed = speed;
-	
-		if(robotGyro.getAngle() < targetAngle){
-			rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/25.0 ;
-		}
-		else if(robotGyro.getAngle() > targetAngle) {
-			lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/25.0;
+
+		if(targetAngle != 0) {
+			if(robotGyro.getAngle() < targetAngle){
+				rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/25.0 ;
+			}
+			else if(robotGyro.getAngle() > targetAngle) {
+				lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/25.0;
+			}
 		}
 	
 		rspeed = rspeed < 0 ? 0 : rspeed;
@@ -392,7 +547,15 @@ public class Robot extends VisualRobot {
 		
 
 	}
+	
+	public void setLEDs(boolean on) {
+		frontLED.set(on);
+		backLED.set(on);
+		rightLED.set(on);
+		leftLED.set(on);
 
+	}
+	
 	public static class Toggler {
 		public boolean enabled;
 		public boolean toggle;
