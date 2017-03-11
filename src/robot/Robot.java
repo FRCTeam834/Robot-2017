@@ -172,7 +172,7 @@ public class Robot extends VisualRobot {
         			int min = -1;
 
 	        		for (int j = i+1; j < contours.size(); j++) {
-	        			if(minj == -1 || Math.abs(centers[j] - 160) < min) {
+	        			if(min == -1 || Math.abs(centers[j] - 160) < min) {
 	        				minj = j;
 		        			min = Math.abs(centers[j] - 160);
 	        			}
