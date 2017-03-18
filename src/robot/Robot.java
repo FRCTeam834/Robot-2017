@@ -1,4 +1,4 @@
- package robot;
+package robot;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -14,17 +14,16 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.MatOfPoint;
 import com.ctre.CANTalon;
 
+import basicCommand.DelayCommand;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.vision.VisionThread;
-import edu.wpi.cscore.AxisCamera;
 import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.AnalogGyro;
-import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DigitalInput;
 import visualrobot.ChooseAuton;
@@ -128,14 +127,14 @@ public class Robot extends VisualRobot {
 
 	    camera.setResolution(IMG_WIDTH, IMG_HEIGHT);
 	    
-		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0*2.0); //*2 is temporary since one encdoer.
-//		rEncoder.setDistancePerPulse(-6.0*Math.PI/256.0);
+//		lEncoder.setDistancePerPulse(6.0*Math.PI/256.0*2.0); //*2 is temporary since one encdoer.
+		rEncoder.setDistancePerPulse(-6.0*Math.PI/256.0*2.0);
 		
 		super.sensors.put("leftEncoder", lEncoder);
 		super.sensors.put("rightEncoder", rEncoder);
 		super.sensors.put("gyro", robotGyro);
 		super.sensors.put("fuelEncoder", fuelEncoder);
-		
+		super.sensors.put("gear", gearSensor);
 		
 		robotGyro.calibrate();
 		gyro.calibrate();
@@ -207,11 +206,12 @@ public class Robot extends VisualRobot {
 	}
 	
 	public void autonomous() {
-
+		try {
 		String program = SmartDashboard.getString("DB/String 0", "default");
 		boolean vision = SmartDashboard.getString("DB/String 1", "").equals( "enablevision");
 		boolean recording = SmartDashboard.getString("DB/String 1", "").equals( "userecording");
-		
+		boolean flop = SmartDashboard.getString("DB/String 1", "").equals( "Floppy");
+
 		if(recording) {
 			useRecording();
 			return;
@@ -223,14 +223,26 @@ public class Robot extends VisualRobot {
 		c.chooseAuton(program);
 		ArrayList<Command> t = c.cmdSet.getMain();
 
-		
-		door.set(1);
 		for(Command com : t) {
 			if(com.getClass().equals(visualrobot.MoveStraightCommand.class)) {
-				((MoveStraightCommand) com).distance -= 15;
+				((MoveStraightCommand) com).distance -=  10;
 			}
 		}
+		
+		if(flop) {
+			MoveStraightCommand floppy1 =  new MoveStraightCommand(10, .6);
+			MoveStraightCommand floppy2 =  new MoveStraightCommand(5, -.6);
 
+			floppy1.setRobot(this);
+			floppy2.setRobot(this);
+
+			DelayCommand delay = new DelayCommand(0.5);
+			delay.setRobot(this);
+			
+			floppy1.execute();
+			floppy2.execute();
+			delay.execute(); 
+		}
 		if(vision) {
 			
 			MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
@@ -257,7 +269,10 @@ public class Robot extends VisualRobot {
 		else {
 			c.run();
 		}
-
+		}
+		catch(Exception e) {
+			System.out.println(e.getMessage());
+		}
 
 	}
 
@@ -452,7 +467,7 @@ public class Robot extends VisualRobot {
 				
 		//Manual Control of Lift
 		if(xbox.getRawButton(1)) {
-			
+			this.setLEDs(false);
 			motors[6].set(1.0);
 		}
 		else if (xbox.getRawButton(2) && manual.enabled) {
