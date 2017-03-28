@@ -69,21 +69,6 @@ public class Robot extends VisualRobot {
 		}
 	};
 
-//	
-//	private static class AUltrasonic extends AnalogInput {
-//		
-//	
-//		public AUltrasonic(int channel) {
-//			super(channel);		
-//		}
-//
-//		public double getDistance() {
-//			return this.getVoltage()/5120.0;
-//		}
-//	}
-//	AUltrasonic ultrasonic = new AUltrasonic(0);
-
-
 	
 	ADXRS450_Gyro robotGyro = new ADXRS450_Gyro();
 	AnalogGyro gyro = new AnalogGyro(1);
@@ -100,6 +85,8 @@ public class Robot extends VisualRobot {
 
 	Toggler LED = new Toggler(xbox, 8); //Start button
 	Toggler fieldCentric = new Toggler(rightJoystick, 2);
+	Toggler alternateDrive = new Toggler(rightJoystick, 3);
+
 	int fieldCentricStage = 0;	
 	double turnAngle = 0;
 	double dAngle = 0;
@@ -152,8 +139,6 @@ public class Robot extends VisualRobot {
 		motors[7] = new CANTalon(4);
 
 		super.motors.put("fuel", motors[7]);
-
-//		manual.enabled =true;
 		
 	    visionThread = new VisionThread(camera, new GripPipeline(), pipeline -> {
 	        if (!pipeline.filterContoursOutput().isEmpty()) {
@@ -189,7 +174,7 @@ public class Robot extends VisualRobot {
 	        		result = (centers[0] + centers[1]) /2;
 	        	}
 	        	else{
-	        		result = 0;
+	        		result = -1;
 	        	}
 	            synchronized (imgLock) {
 	                centerX = result;
@@ -207,68 +192,69 @@ public class Robot extends VisualRobot {
 	
 	public void autonomous() {
 		try {
-		String program = SmartDashboard.getString("DB/String 0", "default");
-		boolean vision = SmartDashboard.getString("DB/String 1", "").equals( "enablevision");
-		boolean recording = SmartDashboard.getString("DB/String 1", "").equals( "userecording");
-		boolean flop = SmartDashboard.getString("DB/String 1", "").equals( "Floppy");
-
-		if(recording) {
-			useRecording();
-			return;
-		}
-		
-		ringLED.set(true);
-
-		ChooseAuton c = new ChooseAuton(this);
-		c.chooseAuton(program);
-		ArrayList<Command> t = c.cmdSet.getMain();
-
-		for(Command com : t) {
-			if(com.getClass().equals(visualrobot.MoveStraightCommand.class)) {
-				((MoveStraightCommand) com).distance -=  10;
+			String program = SmartDashboard.getString("DB/String 0", "default");
+			boolean vision = SmartDashboard.getString("DB/String 1", "").equals( "enablevision");
+			boolean recording = SmartDashboard.getString("DB/String 1", "").equals( "userecording");
+			boolean flop = SmartDashboard.getString("DB/String 2", "").equals( "Floppy");
+	
+			if(recording) {
+				useRecording();
+				return;
 			}
-		}
-		
-		if(flop) {
-			MoveStraightCommand floppy1 =  new MoveStraightCommand(10, .6);
-			MoveStraightCommand floppy2 =  new MoveStraightCommand(5, -.6);
-
-			floppy1.setRobot(this);
-			floppy2.setRobot(this);
-
-			DelayCommand delay = new DelayCommand(0.5);
-			delay.setRobot(this);
-			
-			floppy1.execute();
-			floppy2.execute();
-			delay.execute(); 
-		}
-		if(vision) {
-			
-			MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
-			mvc.distance+=15;
-			c.run();
-			
-			lEncoder.reset();	
-			
 			
 			ringLED.set(true);
-			robotGyro.reset();
-			while (Math.abs(lEncoder.getDistance()) < mvc.distance && this.isAutonomous()) {
-				goTowardsPeg(.2, mvc.distance-lEncoder.getDistance());
+	
+			ChooseAuton c = new ChooseAuton(this);
+			c.chooseAuton(program);
+			ArrayList<Command> t = c.cmdSet.getMain();
+	
+			for(Command com : t) {
+				if(com.getClass().equals(visualrobot.MoveStraightCommand.class)) {
+					((MoveStraightCommand) com).distance -=  10;
+				}
 			}
-			this.setRightSide(0.0);
-			this.setLeftSide(0.0);
-			
-			ringLED.set(false);
-			
-			MoveStraightCommand toPeg = new MoveStraightCommand(20, .3);
-			toPeg.setRobot(this);
-			toPeg.execute();
-		}
-		else {
-			c.run();
-		}
+					
+			door.setAngle(0);
+	
+			if(flop) {
+				MoveStraightCommand floppy1 =  new MoveStraightCommand(10, .6);
+				MoveStraightCommand floppy2 =  new MoveStraightCommand(5, -.6);
+	
+				floppy1.setRobot(this);
+				floppy2.setRobot(this);
+	
+				DelayCommand delay = new DelayCommand(0.5);
+				delay.setRobot(this);
+				
+				floppy1.execute();
+				floppy2.execute();
+				delay.execute(); 
+			}
+			if(vision) {
+				
+				MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
+				c.run();
+				
+				lEncoder.reset();	
+				
+				
+				ringLED.set(true);
+				robotGyro.reset();
+				while (Math.abs(lEncoder.getDistance()) < mvc.distance && this.isAutonomous()) {
+					goTowardsPeg(.2, mvc.distance-(rEncoder.getDistance() + lEncoder.getDistance())+10);
+				}
+				this.setRightSide(0.0);
+				this.setLeftSide(0.0);
+				
+				ringLED.set(false);
+				
+				MoveStraightCommand toPeg = new MoveStraightCommand(10, .3);
+				toPeg.setRobot(this);
+				toPeg.execute();
+			}
+			else {
+				c.run();
+			}
 		}
 		catch(Exception e) {
 			System.out.println(e.getMessage());
@@ -368,6 +354,8 @@ public class Robot extends VisualRobot {
 	public void teleOpPeriodic() {
 
 		manual.check();
+		alternateDrive.check();
+		
 		
 		if(xbox.getRawButton(6)) {
 			fuelEncoder.reset();
@@ -409,7 +397,14 @@ public class Robot extends VisualRobot {
 
 				}
 			}
-			else if(!fieldCentric.enabled){
+			else if (alternateDrive.enabled) {
+				double magnitude = -leftJoystick.getY();
+				double rotation = -rightJoystick.getY();
+				
+				setLeftSide(magnitude - rotation);
+				setRightSide(magnitude +  rotation);
+			}
+			else{
 				setRightSide(-rightJoystick.getY());
 				setLeftSide(-leftJoystick.getY()); 
 
@@ -424,6 +419,7 @@ public class Robot extends VisualRobot {
 			 System.out.println(dAngle);
 			 dAngle =  Math.abs(dAngle) > 90 ? -(180 - dAngle) : dAngle;
 			 turnAngle = gyro.getAngle() - dAngle;
+			 fieldCentricStage = 0;
 		}
 		fieldCentric.check();		
 
@@ -439,14 +435,13 @@ public class Robot extends VisualRobot {
 		}
 		
 		//Various outputs
-		SmartDashboard.putString("DB/String 2", manual.enabled ? "manual enabled" : "manual disabled"); 
-		SmartDashboard.putString("DB/String 3", Double.toString(motors[6].getOutputCurrent()));
+		SmartDashboard.putString("DB/String 3", manual.enabled ? "manual enabled" : "manual disabled"); 
 		SmartDashboard.putString("DB/String 4", "Field Centric: " + Boolean.toString(fieldCentric.enabled) + " " + turnAngle);
 		SmartDashboard.putString("DB/String 5", !gearSensor.get()? "IN IN IN IN" : "no gear");
 		SmartDashboard.putString("DB/String 6", Double.toString(lEncoder.getDistance()));
 		SmartDashboard.putString("DB/String 7", Double.toString(rEncoder.getDistance()));
 		SmartDashboard.putString("DB/String 8", Double.toString(fuelEncoder.getDistance()));
-		SmartDashboard.putString("DB/String 8", Double.toString(gyro.getAngle()));
+		SmartDashboard.putString("DB/String 9", Double.toString(gyro.getAngle()));
 
 		//Auto Climbing
 		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
@@ -492,11 +487,11 @@ public class Robot extends VisualRobot {
 				}
 				
 			}
-			door.set(1);
+			door.setAngle(0);
 		}
 		else if(xbox.getRawButton(3)){// && (manual.enabled || fuelEncoder.getDistance() > 0)) {
 			motors[7].set(-.3);
-			door.set(0);
+			door.setAngle(180);
 
 		}
 		else  {
@@ -505,11 +500,6 @@ public class Robot extends VisualRobot {
 
 		
 		
-//		//Control Door
-//		if(motors[7].getEncPosition() > 55000) {
-//		}
-//		else {
-//		}
 		Timer.delay(.05);
 
 	}
@@ -520,35 +510,37 @@ public class Robot extends VisualRobot {
 
 	public void goTowardsPeg(double speed, double distance) {
 					
-		double centerX, centerY, size;
+		double centerX, size;
 		synchronized (imgLock) {
 			centerX = this.centerX;
 			size = this.size;
 		}
 
-		lastDiff = diff;
-		diff = (centerX - 160) * 2*distance/320;
-		
-		
-		if(lastDiff != diff) {
-			targetAngle = Math.atan(diff/distance) * 180.0 / Math.PI;
-			gyro.reset();
-			if(distance < 15) 
-				targetAngle = 0;
-			if(centerX == 0)
-				targetAngle = 0;
-			System.out.println("changing to " + (robotGyro.getAngle()- targetAngle) + " (" + centerX + ")");
-		}
-		
 		double lspeed = speed, rspeed = speed;
+		if(centerX != -1) {
+			lastDiff = diff;
+			diff = (centerX - 160) * 2*distance/320;
+			
+			if(lastDiff != diff) {
+				targetAngle = Math.atan(diff/distance) * 180.0 / Math.PI;
+				gyro.reset();
+				if(distance < 15) 
+					targetAngle = 0;
+				if(centerX == 0)
+					targetAngle = 0;
+				System.out.println("changing to " + (robotGyro.getAngle()- targetAngle) + " (" + centerX + ")");
+			}
+			
 
-		if(targetAngle != 0) {
-			if(robotGyro.getAngle() < targetAngle){
-				rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/25.0 ;
+			if(targetAngle != 0) {
+				if(robotGyro.getAngle() < targetAngle){
+					rspeed -= speed * Math.abs(robotGyro.getAngle() - targetAngle)/25.0 ;
+				}
+				else if(robotGyro.getAngle() > targetAngle) {
+					lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/25.0;
+				}
 			}
-			else if(robotGyro.getAngle() > targetAngle) {
-				lspeed -= speed *  Math.abs(robotGyro.getAngle() - targetAngle)/25.0;
-			}
+
 		}
 	
 		rspeed = rspeed < 0 ? 0 : rspeed;
@@ -560,6 +552,40 @@ public class Robot extends VisualRobot {
 		this.setLeftSide(lspeed);
 		Timer.delay(.05);
 		
+
+	}
+	
+	public void turnTowardsPeg(double speed, double distance) {
+		
+		double centerX, size;
+		synchronized (imgLock) {
+			centerX = this.centerX;
+			size = this.size;
+		}
+
+		double lspeed = speed, rspeed = speed;
+		if(centerX != -1) {
+			lastDiff = diff;
+			diff = (centerX - 160) * 2*distance/320;
+			
+			if(lastDiff != diff) {
+				targetAngle = Math.atan(diff/distance) * 180.0 / Math.PI;
+				gyro.reset();
+				if(distance < 15) 
+					targetAngle = 0;
+				if(centerX == 0)
+					targetAngle = 0;
+				System.out.println("changing to " + (robotGyro.getAngle()- targetAngle) + " (" + centerX + ")");
+			}
+			
+
+			while(Math.abs(gyro.getAngle()-targetAngle) < 2 && this.isEnabled()){
+				setRightSide(Math.signum(gyro.getAngle()-targetAngle) * speed);
+				setLeftSide(-Math.signum(gyro.getAngle()-targetAngle) * speed);
+
+			}
+
+		}	
 
 	}
 	
