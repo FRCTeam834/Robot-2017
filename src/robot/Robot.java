@@ -195,7 +195,7 @@ public class Robot extends VisualRobot {
 			String program = SmartDashboard.getString("DB/String 0", "default");
 			boolean vision = SmartDashboard.getString("DB/String 1", "").equals( "enablevision");
 			boolean recording = SmartDashboard.getString("DB/String 1", "").equals( "userecording");
-			boolean flop = SmartDashboard.getString("DB/String 2", "").equals( "Floppy");
+			boolean flop = SmartDashboard.getString("DB/String 2", "").equals( "floppy");
 	
 			if(recording) {
 				useRecording();
@@ -213,9 +213,18 @@ public class Robot extends VisualRobot {
 					((MoveStraightCommand) com).distance -=  10;
 				}
 			}
-					
-			door.setAngle(0);
+			
+			if(program.contains("Goal"))		
+				door.setAngle(0);
 	
+			if(program.equals("Center")) {
+				t.set(0, new TimedStraightCommand((MoveStraightCommand) t.get(0), 3));
+			}
+			else {
+				t.set(1, new TimedStraightCommand((MoveStraightCommand) t.get(1), 4));
+			}
+
+			
 			if(flop) {
 				MoveStraightCommand floppy1 =  new MoveStraightCommand(10, .6);
 				MoveStraightCommand floppy2 =  new MoveStraightCommand(5, -.6);
