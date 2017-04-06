@@ -202,7 +202,6 @@ public class Robot extends VisualRobot {
 				return;
 			}
 			
-			ringLED.set(true);
 	
 			ChooseAuton c = new ChooseAuton(this);
 			c.chooseAuton(program);
@@ -210,20 +209,30 @@ public class Robot extends VisualRobot {
 	
 			for(Command com : t) {
 				if(com.getClass().equals(visualrobot.MoveStraightCommand.class)) {
-					((MoveStraightCommand) com).distance -=  10;
+					((MoveStraightCommand) com).distance -=  6;
 				}
 			}
+			
 			
 			if(program.contains("Goal"))		
 				door.setAngle(0);
 	
-			if(program.equals("Center")) {
-				t.set(0, new TimedStraightCommand((MoveStraightCommand) t.get(0), 3));
+			
+			MoveStraightCommand mvc = null;
+			if(vision) {
+				ringLED.set(true);
+				if(program.contains("Center")) {
+					mvc = (MoveStraightCommand) t.remove(1);
+				}
+
 			}
 			else {
-				t.set(1, new TimedStraightCommand((MoveStraightCommand) t.get(1), 4));
+				if(program.contains("Center")) {
+					t.set(1, new TimedStraightCommand((MoveStraightCommand) t.get(1), 3));
+					t.get(1).setRobot(this);
+				}
+	
 			}
-
 			
 			if(flop) {
 				MoveStraightCommand floppy1 =  new MoveStraightCommand(10, .6);
@@ -241,7 +250,6 @@ public class Robot extends VisualRobot {
 			}
 			if(vision) {
 				
-				MoveStraightCommand mvc = (MoveStraightCommand) t.remove(t.size()-1);
 				c.run();
 				
 				lEncoder.reset();	
@@ -351,6 +359,7 @@ public class Robot extends VisualRobot {
 				this.setLeftSide(lSpeeds.get(i));
 				this.setRightSide(rSpeeds.get(i));
 				Timer.delay(times.get(i)/1000.0);
+				i++;
 			}
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -370,6 +379,10 @@ public class Robot extends VisualRobot {
 			fuelEncoder.reset();
 		}
 		
+		if(leftJoystick.getRawButton(2)){
+			this.turnTowardsPeg(.2, 70);
+		}
+		
 		if(rightJoystick.getRawButton(1)) {
 			setRightSide(1.0 * Math.signum(-rightJoystick.getY()));
 			setLeftSide(1.0 * Math.signum(-rightJoystick.getY()));
@@ -378,10 +391,8 @@ public class Robot extends VisualRobot {
 			if(fieldCentric.enabled) {
 				if(fieldCentricStage == 0) {
 					
-					if (Math.signum(dAngle) * gyro.getAngle() <=  Math.signum(dAngle) *turnAngle) {
 						fieldCentricStage = 1;
-
-					}
+					
 				}
 				else if(fieldCentricStage == 1) {
 					double lspeed = -rightJoystick.getY(); //* Math.abs(leftJoystick.getY());
@@ -408,7 +419,7 @@ public class Robot extends VisualRobot {
 			}
 			else if (alternateDrive.enabled) {
 				double magnitude = -leftJoystick.getY();
-				double rotation = -rightJoystick.getY();
+				double rotation = -.8 * rightJoystick.getX()* Math.abs(rightJoystick.getX());
 				
 				setLeftSide(magnitude - rotation);
 				setRightSide(magnitude +  rotation);
