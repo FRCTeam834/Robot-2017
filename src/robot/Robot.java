@@ -372,76 +372,76 @@ public class Robot extends VisualRobot {
 	public void teleOpPeriodic() {
 
 		manual.check();
-		alternateDrive.check();
-		
-		
-		if(xbox.getRawButton(6)) {
-			fuelEncoder.reset();
-		}
-		
-		if(leftJoystick.getRawButton(2)){
-			this.turnTowardsPeg(.2, 70);
-		}
+//		alternateDrive.check();
+//		
+//		
+//		if(xbox.getRawButton(6)) {
+//			fuelEncoder.reset();
+//		}
+//		
+//		if(leftJoystick.getRawButton(2)){
+//			this.turnTowardsPeg(.2, 70);
+//		}
 		
 		if(rightJoystick.getRawButton(1)) {
 			setRightSide(1.0 * Math.signum(-rightJoystick.getY()));
 			setLeftSide(1.0 * Math.signum(-rightJoystick.getY()));
 		}
 		else {				
-			if(fieldCentric.enabled) {
-				if(fieldCentricStage == 0) {
-					
-						fieldCentricStage = 1;
-					
-				}
-				else if(fieldCentricStage == 1) {
-					double lspeed = -rightJoystick.getY(); //* Math.abs(leftJoystick.getY());
-					double rspeed = -rightJoystick.getY();
-					
-					double turnAngle = targetAngle % 360;
-					if(turnAngle < 0) 
-						turnAngle+=360;
-						
-					if(turnAngle >= 90) {
-						lspeed *= -1;
-						rspeed *= -1;
-					}
-					if(gyro.getAngle() - targetAngle < 0){
-						rspeed -= Math.abs((gyro.getAngle()- targetAngle) * rspeed/25.0);
-					}
-					else if(gyro.getAngle()-targetAngle > 0) {
-						lspeed -= Math.abs((gyro.getAngle()- targetAngle) * lspeed/25.0);
-					}
-					this.setLeftSide(lspeed);
-					this.setRightSide(rspeed);
-
-				}
-			}
-			else if (alternateDrive.enabled) {
-				double magnitude = -leftJoystick.getY();
-				double rotation = -.8 * rightJoystick.getX()* Math.abs(rightJoystick.getX());
-				
-				setLeftSide(magnitude - rotation);
-				setRightSide(magnitude +  rotation);
-			}
-			else{
+//			if(fieldCentric.enabled) {
+//				if(fieldCentricStage == 0) {
+//					
+//						fieldCentricStage = 1;
+//					
+//				}
+//				else if(fieldCentricStage == 1) {
+//					double lspeed = -rightJoystick.getY(); //* Math.abs(leftJoystick.getY());
+//					double rspeed = -rightJoystick.getY();
+//					
+//					double turnAngle = targetAngle % 360;
+//					if(turnAngle < 0) 
+//						turnAngle+=360;
+//						
+//					if(turnAngle >= 90) {
+//						lspeed *= -1;
+//						rspeed *= -1;
+//					}
+//					if(gyro.getAngle() - targetAngle < 0){
+//						rspeed -= Math.abs((gyro.getAngle()- targetAngle) * rspeed/25.0);
+//					}
+//					else if(gyro.getAngle()-targetAngle > 0) {
+//						lspeed -= Math.abs((gyro.getAngle()- targetAngle) * lspeed/25.0);
+//					}
+//					this.setLeftSide(lspeed);
+//					this.setRightSide(rspeed);
+//
+//				}
+//			}
+//			else if (alternateDrive.enabled) {
+//				double magnitude = -leftJoystick.getY();
+//				double rotation = -.8 * rightJoystick.getX()* Math.abs(rightJoystick.getX());
+//				
+//				setLeftSide(magnitude - rotation);
+//				setRightSide(magnitude +  rotation);
+//			}
+//			else{
 				setRightSide(-rightJoystick.getY());
 				setLeftSide(-leftJoystick.getY()); 
 
-			}
+//			}
 
 		}
 		
-		if(fieldCentric.getButton() && !fieldCentric.toggle ) {
-			 dAngle = (gyro.getAngle() % 180);
-			 if(dAngle < 0)
-				 dAngle += 180;
-			 System.out.println(dAngle);
-			 dAngle =  Math.abs(dAngle) > 90 ? -(180 - dAngle) : dAngle;
-			 turnAngle = gyro.getAngle() - dAngle;
-			 fieldCentricStage = 0;
-		}
-		fieldCentric.check();		
+//		if(fieldCentric.getButton() && !fieldCentric.toggle ) {
+//			 dAngle = (gyro.getAngle() % 180);
+//			 if(dAngle < 0)
+//				 dAngle += 180;
+//			 System.out.println(dAngle);
+//			 dAngle =  Math.abs(dAngle) > 90 ? -(180 - dAngle) : dAngle;
+//			 turnAngle = gyro.getAngle() - dAngle;
+//			 fieldCentricStage = 0;
+//		}
+//		fieldCentric.check();		
 
 		//Control structure for LED toggle (start button)
 		ringLED.set(LED.enabled);
@@ -456,28 +456,28 @@ public class Robot extends VisualRobot {
 		
 		//Various outputs
 		SmartDashboard.putString("DB/String 3", manual.enabled ? "manual enabled" : "manual disabled"); 
-		SmartDashboard.putString("DB/String 4", "Field Centric: " + Boolean.toString(fieldCentric.enabled) + " " + turnAngle);
-		SmartDashboard.putString("DB/String 5", !gearSensor.get()? "IN IN IN IN" : "no gear");
+//		SmartDashboard.putString("DB/String 4", "Field Centric: " + Boolean.toString(fieldCentric.enabled) + " " + turnAngle);
+//		SmartDashboard.putString("DB/String 5", !gearSensor.get()? "IN IN IN IN" : "no gear");
 		SmartDashboard.putString("DB/String 6", Double.toString(lEncoder.getDistance()));
 		SmartDashboard.putString("DB/String 7", Double.toString(rEncoder.getDistance()));
-		SmartDashboard.putString("DB/String 8", Double.toString(fuelEncoder.getDistance()));
-		SmartDashboard.putString("DB/String 9", Double.toString(gyro.getAngle()));
+//		SmartDashboard.putString("DB/String 8", Double.toString(fuelEncoder.getDistance()));
+//		SmartDashboard.putString("DB/String 9", Double.toString(gyro.getAngle()));
 
 		//Auto Climbing
-		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
-			if(autoClimbing.enabled ){
-				motors[6].set(1.0);
-				Timer.delay(.5);
-				while(autoClimbing.enabled && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
-				System.out.println("Current Threshold Reached");
-				double startTime = Timer.getFPGATimestamp();
-				while(autoClimbing.enabled && motors[6].getOutputCurrent() > this.CURRENT_THRESHOLD && Timer.getFPGATimestamp()-startTime < this.TIME_TO_CLIMB) {}
-				motors[6].set(0.0);
-				autoClimbing.enabled = false;
-			}
-
-		}
-		autoClimbing.check();
+//		if(autoClimbing.getButton() && !autoClimbing.toggle ) {
+//			if(autoClimbing.enabled ){
+//				motors[6].set(1.0);
+//				Timer.delay(.5);
+//				while(autoClimbing.enabled && motors[6].getOutputCurrent() < this.CURRENT_THRESHOLD) {}
+//				System.out.println("Current Threshold Reached");
+//				double startTime = Timer.getFPGATimestamp();
+//				while(autoClimbing.enabled && motors[6].getOutputCurrent() > this.CURRENT_THRESHOLD && Timer.getFPGATimestamp()-startTime < this.TIME_TO_CLIMB) {}
+//				motors[6].set(0.0);
+//				autoClimbing.enabled = false;
+//			}
+//
+//		}
+//		autoClimbing.check();
 
 				
 		//Manual Control of Lift
